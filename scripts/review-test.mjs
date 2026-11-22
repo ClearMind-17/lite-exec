@@ -169,23 +169,83 @@ test("concurrent slot reuse exceeding capacity claims 8 distinct slots cleanly",
   }
 });
 
-test("stale slot lock from a terminated process is reclaimed", async t => {
+test("stale slot locks (dead PID and empty crash lock) are reclaimed", async t => {
   const root = await fixture(t);
   const writers = await Promise.all(Array.from({ length: 8 }, () => openSpillFile(root)));
   for (const [index, writer] of writers.entries()) {
     await writer.write("payload " + index);
     await writer.commit();
   }
-  const targetSlot = dirname(writers[0].path);
   const older = new Date(Date.now() - 60_000);
+  // 1. Stale lock containing a terminated PID on a completed slot.
+  const targetSlot = dirname(writers[0].path);
   await utimes(targetSlot, older, older);
-  const staleLock = join(root, `.claim-${basename(targetSlot)}`);
-  await writeFile(staleLock, "99999999\n");
-  await utimes(staleLock, older, older);
-  const next = await openSpillFile(root);
-  assert.equal(dirname(next.path), targetSlot);
-  await assert.rejects(access(staleLock), { code: "ENOENT" });
-  await next.discard();
+  const deadPidLock = join(root, `.claim-${basename(targetSlot)}`);
+  await writeFile(deadPidLock, "99999999\n");
+  await utimes(deadPidLock, older, older);
+  const first = await openSpillFile(root);
+  assert.equal(dirname(first.path), targetSlot);
+  await assert.rejects(access(deadPidLock), { code: "ENOENT" });
+  await first.write("reclaimed-dead-pid");
+  await first.commit();
+
+  // 2. Empty 0-byte lock left by a crash between open() and writeFile().
+  const secondSlot = dirname(writers[1].path);
+  const evenOlder = new Date(Date.now() - 120_000);
+  await utimes(secondSlot, evenOlder, evenOlder);
+  const emptyLock = join(root, `.claim-${basename(secondSlot)}`);
+  await writeFile(emptyLock, "");
+  await utimes(emptyLock, older, older);
+  const second = await openSpillFile(root);
+  assert.equal(dirname(second.path), secondSlot);
+  await assert.rejects(access(emptyLock), { code: "ENOENT" });
+  await second.discard();
+});
+
+test("concurrent free-slot installation and mixed free/completed claiming stay exclusive", async t => {
+  const root = await fixture(t);
+  // 16 concurrent callers racing on 8 empty slots.
+  const emptyRace = await Promise.allSettled(Array.from({ length: 16 }, () => openSpillFile(root)));
+  const claimed = emptyRace.filter(item => item.status === "fulfilled").map(item => item.value);
+  const rejected = emptyRace.filter(item => item.status === "rejected").map(item => item.reason);
+  assert.equal(claimed.length, 8);
+  assert.equal(new Set(claimed.map(writer => dirname(writer.path))).size, 8);
+  assert.equal(rejected.length, 8);
+  for (const error of rejected) assert.equal(error.spillReason, "LIMIT", error.message);
+
+  // Discard 4 slots (back to free) and commit 4 slots (to completed), then race 12 callers.
+  for (let index = 0; index < 4; index++) await claimed[index].discard();
+  for (let index = 4; index < 8; index++) {
+    await claimed[index].write("mixed-" + index);
+    await claimed[index].commit();
+  }
+  const mixedRace = await Promise.allSettled(Array.from({ length: 12 }, () => openSpillFile(root)));
+  const mixedClaimed = mixedRace.filter(item => item.status === "fulfilled").map(item => item.value);
+  const mixedRejected = mixedRace.filter(item => item.status === "rejected").map(item => item.reason);
+  assert.equal(mixedClaimed.length, 8);
+  assert.equal(new Set(mixedClaimed.map(writer => dirname(writer.path))).size, 8);
+  assert.equal(mixedRejected.length, 4);
+  for (const error of mixedRejected) assert.equal(error.spillReason, "LIMIT", error.message);
+  for (const writer of mixedClaimed) await writer.discard();
+  assert.equal((await readdir(root)).length, 0);
+});
+
+test("expired legacy retired marker from a dead process is reclaimed after 24 hours", async t => {
+  const root = await fixture(t);
+  const retiredName = "00000000-0000-4000-8000-000000000000.retired-99999999";
+  for (let index = 0; index < 8; index++) {
+    const bucket = join(root, "slot-" + index);
+    await mkdir(bucket);
+    await writeFile(join(bucket, retiredName), "legacy-retired");
+  }
+  await assert.rejects(openSpillFile(root), e => e.spillReason === "LIMIT");
+  const target = join(root, "slot-5");
+  const expired = new Date(Date.now() - 25 * 3600000);
+  await utimes(join(target, retiredName), expired, expired);
+  await utimes(target, expired, expired);
+  const writer = await openSpillFile(root);
+  assert.equal(dirname(writer.path), target);
+  await writer.discard();
 });
 
 test("gitBashCandidates resolves PortableGit usr/bin and Scoop while skipping System32", { skip: process.platform !== "win32" }, () => {

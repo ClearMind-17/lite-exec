@@ -29,6 +29,6 @@ Requires Node 24 or later. The declared DSH range is `>=0.2.2-rc.3 <1.0.0`. Earl
 
 To register a subset, add `tools: [lite_exec, lite_read]` under `config`. Omit `tools` for all four, or use `[]` for none. For a portable Bash installation, set `bashPath` to its absolute executable path in that same config. Restricted Windows sessions default to PowerShell. Full-access Windows sessions prefer Git Bash. Shell commands use the current DSH session's permissions.
 
-The default preview budget is 16 KiB. A spill holds up to 16 MiB. Each storage location retains at most eight results and reuses the oldest completed slot when full. Read-only sessions return the preview. Workspace-write sessions save spills under `.dsh-lite-exec/spill` in the workspace.
+The default preview budget is 16 KiB. A spill holds up to 16 MiB. Each storage location retains at most eight results and reuses the oldest completed slot when full. Read-only sessions return the preview. Workspace-write sessions save spills under `.dsh-lite-exec/spill` in the workspace. On Windows, workspace path and symlink guards run on every spill while DACL verification is cached for up to 30 seconds per directory identity (and rechecked immediately if a directory is created or replaced).
 
 Run `npm test` from a source checkout. On Windows, `npm test -- --powershell` also exercises the explicit PowerShell route. Run `node scripts/spill-check.mjs` to verify physical spills and permission checks.

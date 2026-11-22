@@ -43,7 +43,7 @@ Windows 的 `workspace-write` 和 `read-only` 默认在启动前选 PowerShell�
 
 每次执行使用当前会话的 DSH 权限。受限模式走宿主的 OS 沙箱。Windows 受限权限中，显式 Bash 命中已知初始化失败时返回 `diagnostic.code: "WINDOWS_BASH_STARTUP"`。PowerShell 的 stderr 有访问拒绝迹象时返回 `suspectedSandboxDenial:true` 和提示，保留命令退出码。对支持 `-ErrorAction Stop` 的写入命令可加上该参数，使非终止错误以失败退出。写入后可用 `lite_stat` 核对产物。
 
-全访问将完整输出写到 `$DSH_HOME/dsh-lite-exec/spill`，缺省为 `~/.dsh/dsh-lite-exec/spill`。工作区写入使用当前会话工作区根目录下的 `.dsh-lite-exec/spill`。`lite_grep` 跳过该目录，避免把之前的结果算入匹配。可用 `lite_read` 读取已有落盘文件。只读模式在发生溢出时返回已有预览和 `spill.reason: "READ_ONLY"`。确认目录不满足私有权限要求时返回 `ACL_DENIED`。其他存储或 I/O 故障返回 `UNAVAILABLE`。落盘问题保留预览和命令本身的结果。每个存储位置最多八个槽、每槽 16 MiB、总计 128 MiB。后续写入时清理超过 24 小时的过期文件。槽位已满时复用最早完成的结果，之后读取旧路径会返回文件不存在。正在写入的槽位保留。旧版日志继续按 24 小时过期。Windows 目录 ACL 限制在当前账号和允许的系统主体内，Unix 目录和文件分别用 0700、0600。
+全访问将完整输出写到 `$DSH_HOME/dsh-lite-exec/spill`，缺省为 `~/.dsh/dsh-lite-exec/spill`。工作区写入使用当前会话工作区根目录下的 `.dsh-lite-exec/spill`。`lite_grep` 跳过该目录，避免把之前的结果算入匹配。可用 `lite_read` 读取已有落盘文件。只读模式在发生溢出时返回已有预览和 `spill.reason: "READ_ONLY"`。确认目录不满足私有权限要求时返回 `ACL_DENIED`。其他存储或 I/O 故障返回 `UNAVAILABLE`。落盘问题保留预览和命令本身的结果。每个存储位置最多八个槽、每槽 16 MiB、总计 128 MiB。后续写入时清理超过 24 小时的过期文件。槽位已满时复用最早完成的结果，之后读取旧路径会返回文件不存在。正在写入的槽位保留。旧版日志继续按 24 小时过期。Windows 目录 ACL 限制在当前账号和允许的系统主体内，Unix 目录和文件分别用 0700、0600。Windows 工作区模式下，路径与防软链校验每次落盘都会执行，目录 DACL 校验则按目录标识缓存最多 30 秒（目录新建或被替换时会立即复检）。
 
 ## 禁用、卸载与回滚
 
