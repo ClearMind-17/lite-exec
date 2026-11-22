@@ -1,0 +1,4 @@
+*.bak
+*.tgz
+.dsh-lite-exec/
+node_modules/

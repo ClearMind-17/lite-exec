@@ -1,0 +1,270 @@
+{
+  "scope": "Installed Electron backend, isolated Desktop profile and deterministic local LLM adapter",
+  "permission": "workspace-write",
+  "presets": [
+    "standard"
+  ],
+  "results": {
+    "enabled": {
+      "native": {
+        "permission": "workspace-write",
+        "declaredTools": [
+          "ask_user_question",
+          "create_goal",
+          "edit",
+          "get_goal",
+          "glob",
+          "grep",
+          "job_kill",
+          "job_list",
+          "job_output",
+          "list_agents",
+          "list_subagent_models",
+          "lite_exec",
+          "lite_grep",
+          "lite_read",
+          "lite_stat",
+          "load_workspace_dependencies",
+          "plugin_manager",
+          "present",
+          "pwsh",
+          "read",
+          "read_image",
+          "schedule_create",
+          "schedule_edit",
+          "schedule_list",
+          "schedule_view",
+          "send_message",
+          "skill",
+          "subagent",
+          "subagent_fork",
+          "todo_write",
+          "update_goal",
+          "wait_agent",
+          "web_fetch",
+          "workflow",
+          "working_directory",
+          "write"
+        ],
+        "registeredTools": [
+          "ask_user_question",
+          "create_goal",
+          "edit",
+          "exit_plan_mode",
+          "get_goal",
+          "glob",
+          "grep",
+          "job_kill",
+          "job_list",
+          "job_output",
+          "list_agents",
+          "list_subagent_models",
+          "lite_exec",
+          "lite_grep",
+          "lite_read",
+          "lite_stat",
+          "load_workspace_dependencies",
+          "office_convert",
+          "office_recalculate",
+          "office_render",
+          "plugin_manager",
+          "present",
+          "pwsh",
+          "read",
+          "read_image",
+          "schedule_create",
+          "schedule_edit",
+          "schedule_list",
+          "schedule_view",
+          "send_message",
+          "skill",
+          "subagent",
+          "subagent_fork",
+          "team_task_create",
+          "team_task_get",
+          "team_task_list",
+          "team_task_update",
+          "todo_write",
+          "update_goal",
+          "wait_agent",
+          "web_fetch",
+          "web_search",
+          "workflow",
+          "working_directory",
+          "write"
+        ],
+        "injectTokens": 336,
+        "injectMessages": 2,
+        "expectedCalls": 5,
+        "firstRequestContextBreakdown": {
+          "systemTokens": 1528,
+          "toolsTokens": 8459,
+          "messageTokens": 848
+        },
+        "finalToolsTokens": 8459,
+        "runtime": {
+          "electron": "44.7.0",
+          "node": "24.21.0",
+          "dsh": "0.2.2-rc.3"
+        },
+        "calls": [
+          {
+            "isError": false,
+            "ok": true,
+            "shell": "powershell",
+            "exitCode": 0,
+            "truncated": false,
+            "spill": false,
+            "msysStartupDenied": false,
+            "gitDubiousOwnership": false,
+            "windowsSandboxRunnerFailure": false,
+            "durationMs": 707.19
+          },
+          {
+            "isError": false,
+            "ok": true,
+            "shell": "powershell",
+            "exitCode": 0,
+            "truncated": false,
+            "spill": false,
+            "msysStartupDenied": false,
+            "gitDubiousOwnership": false,
+            "windowsSandboxRunnerFailure": false,
+            "durationMs": 678.44
+          },
+          {
+            "isError": false,
+            "ok": false,
+            "code": "EACCES",
+            "shell": "powershell",
+            "exitCode": 1,
+            "truncated": false,
+            "spill": false,
+            "msysStartupDenied": false,
+            "gitDubiousOwnership": false,
+            "windowsSandboxRunnerFailure": false,
+            "durationMs": 760.83
+          },
+          {
+            "isError": false,
+            "ok": false,
+            "code": "SPILL",
+            "shell": "powershell",
+            "exitCode": 0,
+            "truncated": true,
+            "spill": false,
+            "msysStartupDenied": false,
+            "gitDubiousOwnership": false,
+            "windowsSandboxRunnerFailure": false,
+            "durationMs": 715.97
+          },
+          {
+            "isError": false,
+            "ok": false,
+            "code": "EXIT_NONZERO",
+            "shell": "bash",
+            "exitCode": 3221225794,
+            "truncated": false,
+            "spill": false,
+            "msysStartupDenied": false,
+            "gitDubiousOwnership": false,
+            "windowsSandboxRunnerFailure": false,
+            "durationMs": 423.82
+          }
+        ],
+        "durableCalls": [
+          {
+            "isError": false,
+            "ok": true,
+            "exitCode": 0,
+            "shell": "powershell",
+            "truncated": false,
+            "spill": false,
+            "childPidEmitted": false,
+            "sawReadableFixture": true,
+            "stderrBytes": 0
+          },
+          {
+            "isError": false,
+            "ok": true,
+            "exitCode": 0,
+            "shell": "powershell",
+            "truncated": false,
+            "spill": false,
+            "childPidEmitted": false,
+            "sawReadableFixture": false,
+            "stderrBytes": 0
+          },
+          {
+            "isError": false,
+            "ok": false,
+            "code": "EACCES",
+            "exitCode": 1,
+            "shell": "powershell",
+            "truncated": false,
+            "spill": false,
+            "childPidEmitted": false,
+            "sawReadableFixture": false,
+            "stderrBytes": 953
+          },
+          {
+            "isError": false,
+            "ok": false,
+            "code": "SPILL",
+            "exitCode": 0,
+            "shell": "powershell",
+            "truncated": true,
+            "spill": false,
+            "childPidEmitted": false,
+            "sawReadableFixture": false,
+            "stderrBytes": 0
+          },
+          {
+            "isError": false,
+            "ok": false,
+            "code": "EXIT_NONZERO",
+            "exitCode": 3221225794,
+            "shell": "bash",
+            "truncated": false,
+            "spill": false,
+            "childPidEmitted": false,
+            "sawReadableFixture": false,
+            "stderrBytes": 134
+          }
+        ],
+        "toolsTokens": 8459,
+        "systemTokens": 1528,
+        "persistedToolsTokens": 8459
+      },
+      "shutdownAcknowledged": true
+    }
+  },
+  "checks": {
+    "smallCommand": {
+      "passed": true,
+      "shell": "powershell"
+    },
+    "workspaceWrite": {
+      "passed": true,
+      "allowed": true,
+      "created": true
+    },
+    "outsideWrite": {
+      "passed": true,
+      "created": false,
+      "code": "EACCES"
+    },
+    "spill": {
+      "passed": true,
+      "created": false,
+      "code": "SPILL"
+    },
+    "explicitBash": {
+      "passed": true,
+      "shell": "bash",
+      "ok": false,
+      "code": "EXIT_NONZERO",
+      "exitCode": 3221225794
+    }
+  }
+}
