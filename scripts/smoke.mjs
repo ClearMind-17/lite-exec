@@ -82,6 +82,7 @@ try {
     assert.equal(result.code, "EXIT_NONZERO");
     assert.equal(result.shellUsed, powershell ? "powershell" : "bash");
     assert.equal(result.shellFallback, false);
+    assert.ok(result.spillPath, JSON.stringify(result));
     assert.deepEqual(result.stderr.split("\n"), Array.from({ length: 20 }, (_, n) => "err" + (n + 6)));
   });
   await scenario("timeout and descendant cleanup", async () => {
@@ -96,7 +97,8 @@ try {
     assert.equal(launchCount, before + 1);
     assert.deepEqual((await readFile(join(work, "timeout-marker"), "utf8")).trimEnd().split(/\r?\n/u), ["once"]);
     assert.equal(result.truncated, true);
-    assert.ok(performance.now() - start < 5000, "Process cleanup exceeded the timeout allowance");
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 5000, `Process cleanup exceeded the timeout allowance (${Math.round(elapsed)}ms, spillError=${result.spillError ?? "none"})`);
     const pid = Number(result.stdout.trimEnd().split(/\r?\n/u).at(-1));
     assert.ok(Number.isInteger(pid) && pid > 1);
     if (windows || process.platform === "darwin") {
