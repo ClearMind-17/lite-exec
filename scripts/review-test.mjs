@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { access, mkdir, mkdtemp, open, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import test from "node:test";
 import { promisify } from "node:util";
@@ -72,6 +72,7 @@ test("ASAR container metadata uses physical file size", async t => {
   assert.equal(info.size, 5);
   const missing = await tools.stat({ path: join(root, "missing.asar") });
   assert.equal(missing.exists, false);
+  assert.equal(missing.isAsar, false);
 });
 
 test("mixed output reserves stdout, preserves stderr-only budget and reports actionable hints", async () => {
@@ -143,4 +144,73 @@ test("old-format results retain the original 24-hour expiry", async t => {
   const writer = await openSpillFile(root);
   assert.equal(dirname(writer.path), bucket);
   await writer.discard();
+});
+
+test("concurrent slot reuse exceeding capacity claims 8 distinct slots cleanly", async t => {
+  const root = await fixture(t);
+  const initial = await Promise.all(Array.from({ length: 8 }, () => openSpillFile(root)));
+  for (const [index, writer] of initial.entries()) {
+    await writer.write("seed " + index);
+    await writer.commit();
+  }
+  for (let round = 0; round < 5; round++) {
+    const outcomes = await Promise.allSettled(Array.from({ length: 12 }, () => openSpillFile(root)));
+    const claimed = outcomes.filter(item => item.status === "fulfilled").map(item => item.value);
+    const rejected = outcomes.filter(item => item.status === "rejected").map(item => item.reason);
+    assert.equal(claimed.length, 8);
+    assert.equal(new Set(claimed.map(writer => dirname(writer.path))).size, 8);
+    assert.equal(rejected.length, 4);
+    for (const error of rejected) assert.equal(error.spillReason, "LIMIT", error.message);
+    for (const [index, writer] of claimed.entries()) {
+      await writer.write(`round-${round}-${index}`);
+      await writer.commit();
+    }
+    assert.equal((await readdir(root)).length, 8);
+  }
+});
+
+test("stale slot lock from a terminated process is reclaimed", async t => {
+  const root = await fixture(t);
+  const writers = await Promise.all(Array.from({ length: 8 }, () => openSpillFile(root)));
+  for (const [index, writer] of writers.entries()) {
+    await writer.write("payload " + index);
+    await writer.commit();
+  }
+  const targetSlot = dirname(writers[0].path);
+  const older = new Date(Date.now() - 60_000);
+  await utimes(targetSlot, older, older);
+  const staleLock = join(root, `.claim-${basename(targetSlot)}`);
+  await writeFile(staleLock, "99999999\n");
+  await utimes(staleLock, older, older);
+  const next = await openSpillFile(root);
+  assert.equal(dirname(next.path), targetSlot);
+  await assert.rejects(access(staleLock), { code: "ENOENT" });
+  await next.discard();
+});
+
+test("gitBashCandidates resolves PortableGit usr/bin and Scoop while skipping System32", { skip: process.platform !== "win32" }, () => {
+  const pathKey = Object.keys(process.env).find(key => key.toLowerCase() === "path") ?? "Path";
+  const previousPath = process.env[pathKey];
+  const previousScoopGlobal = process.env.SCOOP_GLOBAL;
+  try {
+    process.env[pathKey] = [
+      "C:\\Windows\\System32",
+      "D:\\Tools\\PortableGit-2.47\\usr\\bin",
+      "C:\\Portable\\git\\current\\usr\\bin",
+    ].join(";");
+    process.env.SCOOP_GLOBAL = "C:\\ProgramData\\scoop";
+    const candidates = gitBashCandidates("D:\\Custom\\bash.exe");
+    assert.equal(candidates[0], "D:\\Custom\\bash.exe");
+    const wrapperIndex = candidates.indexOf("D:\\Tools\\PortableGit-2.47\\bin\\bash.exe");
+    const usrBinIndex = candidates.indexOf("D:\\Tools\\PortableGit-2.47\\usr\\bin\\bash.exe");
+    assert.ok(wrapperIndex > 0 && usrBinIndex > wrapperIndex);
+    assert.ok(candidates.includes("C:\\Portable\\git\\current\\bin\\bash.exe"));
+    assert.ok(candidates.includes("C:\\ProgramData\\scoop\\apps\\git\\current\\bin\\bash.exe"));
+    assert.ok(!candidates.some(candidate => /\\System32\\/iu.test(candidate)));
+  } finally {
+    if (previousPath === undefined) delete process.env[pathKey];
+    else process.env[pathKey] = previousPath;
+    if (previousScoopGlobal === undefined) delete process.env.SCOOP_GLOBAL;
+    else process.env.SCOOP_GLOBAL = previousScoopGlobal;
+  }
 });
