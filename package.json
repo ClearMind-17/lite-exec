@@ -2,11 +2,49 @@
   "name": "dsh-lite-exec",
   "version": "0.1.3",
   "license": "MIT",
-  "description": "Bounded Shell and file tools for DeepSeek Harness",
+  "description": "Bounded shell execution and large-file/ASAR inspection plugin for DeepSeek Harness",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "shell",
+    "file-tools",
+    "grep",
+    "asar",
+    "windows"
+  ],
+  "author": "ClearMind-17",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ClearMind-17/lite-exec.git"
+  },
+  "homepage": "https://github.com/ClearMind-17/lite-exec#readme",
+  "bugs": {
+    "url": "https://github.com/ClearMind-17/lite-exec/issues"
+  },
   "type": "module",
   "main": "./lib/index.js",
-  "files": ["lib", "cordis.patch.yml", "README.md", "README.zh.md", "LICENSE"],
-  "engines": {"node": ">=24", "dsh": ">=0.2.2-rc.3 <1.0.0"},
-  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
-  "scripts": {"pretest": "node --test scripts/review-test.mjs", "test": "node scripts/smoke.mjs"}
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24",
+    "dsh": ">=0.2.2-rc.3 <1.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "pretest": "node --test scripts/review-test.mjs",
+    "test": "node scripts/smoke.mjs"
+  }
 }

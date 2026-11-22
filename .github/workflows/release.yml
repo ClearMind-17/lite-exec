@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm test
+      - if: runner.os == 'Windows'
+        run: npm test -- --powershell
+      - run: node scripts/spill-check.mjs
+      - run: npm pack --dry-run
+
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify tag matches package.json version
+        id: meta
+        run: |
+          PKG_NAME="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).name")"
+          PKG_VERSION="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version")"
+          TAG="${GITHUB_REF_NAME}"
+          if [ "$TAG" != "v${PKG_VERSION}" ]; then
+            echo "Tag ${TAG} does not match package.json version v${PKG_VERSION}" >&2
+            exit 1
+          fi
+          echo "name=${PKG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Pack tarball and compute checksum
+        id: pack
+        env:
+          PKG_NAME: ${{ steps.meta.outputs.name }}
+          PKG_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          npm pack
+          TARBALL="${PKG_NAME}-${PKG_VERSION}.tgz"
+          test -f "$TARBALL"
+          sha256sum "$TARBALL" > SHA256SUMS.txt
+          SHA256="$(awk '{print $1}' SHA256SUMS.txt)"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+      - name: Prepare release notes
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          SHA256: ${{ steps.pack.outputs.sha256 }}
+        run: |
+          NOTES_SRC=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$NOTES_SRC" ]; then
+            cp "$NOTES_SRC" release-body.md
+          else
+            printf "## DSH Lite Exec %s\n" "${GITHUB_REF_NAME}" > release-body.md
+          fi
+          printf '\n### Package Verification\n- Tarball: `%s`\n- SHA-256: `%s`\n' "$TARBALL" "$SHA256" >> release-body.md
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "DSH Lite Exec ${TAG}" \
+              --notes-file release-body.md
+            gh release upload "$TAG" "$TARBALL" SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" "$TARBALL" SHA256SUMS.txt \
+              --title "DSH Lite Exec ${TAG}" \
+              --notes-file release-body.md
+          fi
