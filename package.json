@@ -1,6 +1,6 @@
 {
   "name": "dsh-lite-exec",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "license": "MIT",
   "description": "Bounded shell execution and large-file/ASAR inspection plugin for DeepSeek Harness",
   "keywords": [
@@ -29,7 +29,10 @@
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts/review-test.mjs",
+    "scripts/smoke.mjs",
+    "scripts/spill-check.mjs"
   ],
   "engines": {
     "node": ">=24",

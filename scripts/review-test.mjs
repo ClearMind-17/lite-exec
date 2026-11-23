@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
-import { access, mkdir, mkdtemp, open, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -19,13 +20,26 @@ async function fixture(t) {
   return root;
 }
 
-function registered(config) {
+function registered(config, info) {
   const result = new Map();
-  apply({ inject(_, setup) {
+  apply({ logger: { info }, inject(_, setup) {
     setup({ tools: { register(tool) { result.set(tool.name, tool); } } });
   } }, config);
   return result;
 }
+
+test("bundled tools register by default and explicit configuration still controls registration", () => {
+  assert.deepEqual([...registered().keys()], ["lite_exec", "lite_read", "lite_grep", "lite_stat"]);
+  const messages = [];
+  const info = message => messages.push(message);
+  assert.equal(registered({ enabled: false }, info).size, 0);
+  assert.equal(registered({ tools: [] }, info).size, 0);
+  assert.match(messages[0], /config\.enabled is false/u);
+  assert.match(messages[1], /config\.tools is empty/u);
+  assert.throws(() => registered({ enabled: "false" }), { code: "EINVAL" });
+  assert.throws(() => registered({ enabled: false, tools: ["unknown"] }), { code: "EINVAL" });
+  assert.throws(() => registered({ enabled: false, bashPath: "relative/bash" }), { code: "EINVAL" });
+});
 
 test("registration, glob arrays and case-insensitive literal columns", async t => {
   const root = await fixture(t);
@@ -60,6 +74,76 @@ test("registration, glob arrays and case-insensitive literal columns", async t =
   assert.equal((await search("Straße")).matches[0].line, 2);
 });
 
+test("grep keeps the encoding detected by read across GBK lines and byte windows", async t => {
+  const root = await fixture(t);
+  const path = join(root, "gbk.txt");
+  const firstLine = Buffer.from([0xb2, 0xe2, 0xca, 0xd4, 0x0a]); // 测试 in GBK
+  const ambiguous = Buffer.from([0xc2, 0xa1]); // 隆 in GBK, ¡ in UTF-8
+  const chunkBytes = 64 * 1024;
+  const filler = Buffer.alloc(chunkBytes - firstLine.length - 2, "x");
+  const bytes = Buffer.concat([firstLine, filler, Buffer.from("\n"), ambiguous, Buffer.from("\r\n"), ambiguous]);
+  await writeFile(path, bytes);
+  const tools = createFileTools({ fs, authorize: async p => p });
+  const read = await tools.read({ path, limitBytes: bytes.length });
+  assert.equal(read.encoding, "gbk");
+  assert.equal(read.content, `测试\n${filler}\n隆\r\n隆`);
+  const result = await tools.grep({ path, pattern: "隆" });
+  assert.equal(result.complete, true);
+  assert.equal(result.matchCount, 2);
+  assert.deepEqual(result.matches.map(({ line, column, text }) => ({ line, column, text })), [
+    { line: 3, column: 1, text: "隆" }, { line: 4, column: 1, text: "隆" },
+  ]);
+  assert.equal((await tools.grep({ path, pattern: "¡" })).matchCount, 0);
+
+  const asciiFirst = join(root, "ascii-first.txt");
+  const head = Buffer.alloc(chunkBytes, "x");
+  head[chunkBytes - 1] = 10;
+  await writeFile(asciiFirst, Buffer.concat([head, firstLine]));
+  const fallback = await tools.grep({ path: asciiFirst, pattern: "测试" });
+  assert.equal(fallback.matchCount, 1);
+  assert.equal(fallback.matches[0].line, 2);
+});
+
+test("grep skips both plugin spill locations while read still opens the logs", async t => {
+  const root = await realpath(await fixture(t));
+  const previousDshHome = process.env.DSH_HOME;
+  const dshHome = join(root, "profile");
+  process.env.DSH_HOME = dshHome;
+  t.after(() => {
+    if (previousDshHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousDshHome;
+  });
+  const tools = registered({ enabled: true, tools: ["lite_read", "lite_grep"] });
+  const published = "00000000-0000-4000-8000-000000000000.done.log";
+  const globalSlot = join(dshHome, "dsh-lite-exec", "spill", "slot-0");
+  const workspaceSlot = join(root, ".dsh-lite-exec", "spill", "slot-0");
+  for (const slot of [globalSlot, workspaceSlot]) {
+    await mkdir(slot, { recursive: true });
+    await writeFile(join(slot, published), "grep-marker\n");
+  }
+  const source = join(dshHome, "dsh-lite-exec", "spill-notes.txt");
+  await writeFile(source, "grep-marker\n");
+  for (const mode of ["danger-full-access", "workspace-write", "read-only"]) {
+    const services = {
+      fs: { resolve: async input => resolve(root, input), processPath: p => p, processPathFromHostPath: p => p },
+      workingDirectory: { ensure: async () => root },
+      sandboxPolicy: { resolve: () => ({ mode }) },
+    };
+    const invocation = { agent: { session: {}, ctx: { get: key => services[key] } } };
+    const grep = tools.get("lite_grep");
+    const result = await grep.execute({ path: ".", pattern: "grep-marker" }, invocation);
+    assert.equal(result.complete, true, mode);
+    assert.deepEqual(result.matches.map(match => match.path), [source], mode);
+    for (const slot of [globalSlot, workspaceSlot]) {
+      const path = join(slot, published);
+      const direct = await grep.execute({ path, pattern: "grep-marker" }, invocation);
+      assert.equal(direct.matchCount, 0, mode);
+      const read = await tools.get("lite_read").execute({ path }, invocation);
+      assert.equal(read.content, "grep-marker\n", mode);
+    }
+  }
+});
+
 test("ASAR container metadata uses physical file size", async t => {
   const root = await fixture(t);
   const path = join(root, "test.asar");
@@ -73,6 +157,48 @@ test("ASAR container metadata uses physical file size", async t => {
   const missing = await tools.stat({ path: join(root, "missing.asar") });
   assert.equal(missing.exists, false);
   assert.equal(missing.isAsar, false);
+});
+
+test("ASAR read and grep verify 4 KiB blocks across byte ranges", async t => {
+  const root = await fixture(t);
+  const blockSize = 4096;
+  const marker = "cross-block";
+  const offsetBytes = blockSize - 4;
+  const data = Buffer.alloc(blockSize * 2 + 31, "x");
+  data.write(marker, offsetBytes);
+  const blocks = [];
+  for (let offset = 0; offset < data.length; offset += blockSize) {
+    blocks.push(createHash("sha256").update(data.subarray(offset, offset + blockSize)).digest("hex"));
+  }
+  const filename = "entry.txt";
+  const json = Buffer.from(JSON.stringify({ files: { [filename]: {
+    size: data.length, offset: "0", integrity: { algorithm: "SHA256", blockSize, blocks },
+  } } }));
+  const header = Buffer.alloc(8 + Math.ceil(json.length / 4) * 4);
+  header.writeUInt32LE(header.length - 4, 0);
+  header.writeUInt32LE(json.length, 4);
+  json.copy(header, 8);
+  const size = Buffer.alloc(8);
+  size.writeUInt32LE(4, 0);
+  size.writeUInt32LE(header.length, 4);
+
+  const archive = join(root, "small-blocks.asar");
+  await writeFile(archive, Buffer.concat([size, header, data]));
+  const electron = { promises: { stat: async () => ({ size: data.length, isFile: () => true, isDirectory: () => false }) } };
+  const tools = createFileTools({ fs: electron, originalFs: fs, authorize: async p => p });
+  const path = join(archive, filename);
+  const read = await tools.read({ path, offsetBytes, limitBytes: marker.length });
+  assert.equal(read.content, marker);
+  const result = await tools.grep({ path, pattern: marker });
+  assert.equal(result.complete, true);
+  assert.equal(result.matchCount, 1);
+  assert.equal(result.matches[0].column, offsetBytes + 1);
+
+  const damaged = join(root, "damaged-block.asar");
+  data[blockSize + 50] ^= 1;
+  await writeFile(damaged, Buffer.concat([size, header, data]));
+  const bad = await tools.read({ path: join(damaged, filename), offsetBytes, limitBytes: marker.length });
+  assert.equal(bad.code, "ASAR_INTEGRITY");
 });
 
 test("mixed output reserves stdout, preserves stderr-only budget and reports actionable hints", async () => {
@@ -126,6 +252,40 @@ test("eight concurrent slots, oldest result reuse and in-flight reader snapshot"
   await promisify(execFile)(process.execPath, ["--input-type=module", "-e", child, module, root]);
   await Promise.all(held.map(w => w.discard()));
   assert.equal((await readdir(root)).length, 1);
+});
+
+test("interrupted slot reuse drops only expired pending files from exited writers", async t => {
+  const root = await fixture(t);
+  const published = "00000000-0000-4000-8000-000000000000.done.log";
+  const deadPid = 99999999;
+  const old = new Date(Date.now() - 48 * 3600000);
+  for (let slot = 0; slot < 8; slot++) {
+    const bucket = join(root, `slot-${slot}`);
+    const pid = slot < 2 || slot === 7 ? deadPid : process.pid;
+    const pending = join(bucket, `00000000-0000-4000-8000-000000000001.pending-${pid}`);
+    await mkdir(bucket);
+    const finished = join(bucket, published);
+    await writeFile(finished, `published ${slot}`);
+    await utimes(finished, old, old);
+    await writeFile(pending, "");
+    if (slot !== 7) await utimes(pending, old, old);
+    const age = slot === 0 ? new Date(old.getTime() - 1000) : old;
+    await utimes(bucket, age, age);
+  }
+  const staleLock = join(root, ".claim-slot-0");
+  await writeFile(staleLock, `${deadPid}\n`);
+  await utimes(staleLock, old, old);
+
+  const writer = await openSpillFile(root);
+  try {
+    assert.equal(dirname(writer.path), join(root, "slot-0"));
+    assert.deepEqual(await readdir(join(root, "slot-1")), [published]);
+    assert.equal(await readFile(join(root, "slot-1", published), "utf8"), "published 1");
+    for (let slot = 2; slot < 8; slot++) assert.equal((await readdir(join(root, `slot-${slot}`))).length, 2);
+    await writer.write("replacement");
+    await writer.commit();
+    assert.equal(await readFile(writer.path, "utf8"), "replacement");
+  } finally { await writer.discard(); }
 });
 
 test("old-format results retain the original 24-hour expiry", async t => {

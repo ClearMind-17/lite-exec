@@ -142,7 +142,9 @@ export function apply(ctx) {
         const invocation = scenario === 'combined' ? combinedCall(step, ctx.agents.get(sessionId).session.snapshotEvents())
           : scenario === 'paired-powershell' ? pairedCall(step, workspace) : ptc ? {
           name: 'run_code',
-          arguments: { code: `console.log(await tools.lite_exec(${JSON.stringify(args)}))`, description: 'Check the local Git worktree' },
+          arguments: { code: `const info = await tools.lite_stat({ path: "." })\n`
+            + `if (!info.ok || !info.exists || !info.isDir) throw new Error("lite_stat could not inspect the workspace")\n`
+            + `console.log(await tools.lite_exec(${JSON.stringify(args)}))`, description: 'Check the local Git worktree' },
         } : scenario === 'files' ? fileChecks[step] : scenario === 'workspace-grep' ? {
           name: 'lite_grep', arguments: { path: 'grep-fixture.txt', pattern: 'needle', maxMatches: 3 },
         } : { name: 'lite_exec', arguments: args }
@@ -247,6 +249,7 @@ export function apply(ctx) {
           previewBytes: Buffer.byteLength(value?.stdout ?? '') + Buffer.byteLength(value?.stderr ?? '') } : {}) }
     })
     const ptcError = events.find(event => event.type === 'tool/result' && event.data.message.isError)?.data.error?.code
+    const ptcResultOk = scenario === 'ptc' || scenario === 'ptc-powershell' ? outputs.get('lite-check-0')?.isError === false : undefined
     const files = scenario === 'files' ? fileChecks.map(({ name, check }, index) => {
       const result = outputs.get(`lite-check-${index}`)
       let value
@@ -269,7 +272,7 @@ export function apply(ctx) {
     const breakdown = ctx.sessionProjections.snapshot(agent.session, ['contextBreakdown']).values.contextBreakdown
     return { sessionId, permission, ...measurement, finalToolsTokens: breakdown.toolsTokens,
       runtime: { electron: process.versions.electron, node: process.versions.node, dsh: process.env.DSH_CLIENT_VERSION },
-      calls: outcomes.get(sessionId) ?? [], durableCalls, ptcError, files, grep, paired, spillReadback,
+      calls: outcomes.get(sessionId) ?? [], durableCalls, ptcError, ptcResultOk, files, grep, paired, spillReadback,
       pairs: benchmarks.get(sessionId)?.samples.slice(1),
       ...(scenario === 'combined' ? { combinedCalls: summarizeCombinedCalls(outputs) } : {}) }
   }

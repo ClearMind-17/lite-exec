@@ -1,5 +1,3 @@
 - insert:
     - id: dsh-lite-exec
       name: dsh-lite-exec
-      config:
-        enabled: false

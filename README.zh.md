@@ -1,24 +1,39 @@
 # DSH Lite Exec
 
-**安装后需手动启用。** 在 Desktop profile 的 `cordis.patch.yml` 中加入以下覆盖项。已有同 ID 的条目时，直接修改该项。重开 Desktop 并新建会话后生效。
+安装后默认注册 `lite_exec`、`lite_read`、`lite_grep` 和 `lite_stat`。
+
+## 安装 0.1.5
+
+完全退出 DSH Desktop，在准备长期保留安装包的目录运行下列命令。源码用户可先在插件目录运行 `npm pack` 生成安装包。CLI 可能需要联网解析 Desktop profile 中的其他依赖。
+
+```powershell
+$archive = (Resolve-Path -LiteralPath './dsh-lite-exec-0.1.5.tgz').Path
+dsh plugin --profile desktop add "dsh-lite-exec@file:$archive" --ignore-scripts
+```
+
+profile 会记录安装包的路径，请保留该文件。
+
+运行环境为 Node.js 24 及以上。DSH 声明范围为 `>=0.2.2-rc.3 <1.0.0`，此前宿主实测覆盖 `0.2.2-rc.3` 和 `0.2.2-rc.5`。
+
+重开 Desktop 并新建会话。在 Flash PTC 会话中通过 `run_code` 执行下列代码，当前目录应返回 `exists: true` 和 `isDir: true`。
+
+```js
+console.log(await tools.lite_stat({ path: "." }))
+```
+
+升级后仍缺少工具时，检查 Desktop 插件开关，以及 profile 的 `cordis.patch.yml` 中是否已有 `config.enabled: false` 或 `config.tools: []`。这两种覆盖项会阻止工具注册，插件会在启动日志中记录原因。
+
+## 配置
+
+需要限定工具时，在 Desktop profile 的 `cordis.patch.yml` 中修改 `dsh-lite-exec` 条目。例如只启用 Shell：
 
 ```yaml
 - id: dsh-lite-exec
   config:
-    enabled: true
+    tools: [lite_exec]
 ```
 
-## 安装 0.1.3
-
-完全退出 DSH Desktop，在安装包所在目录运行下列命令。源码用户可先在插件目录运行 `npm pack` 生成安装包。CLI 可能需要联网解析 Desktop profile 中的其他依赖。
-
-```powershell
-dsh plugin --profile desktop add ./dsh-lite-exec-0.1.3.tgz --ignore-scripts
-```
-
-运行环境为 Node.js 24 及以上。DSH 声明范围为 `>=0.2.2-rc.3 <1.0.0`，此前宿主实测覆盖 `0.2.2-rc.3` 和 `0.2.2-rc.5`。
-
-默认注册四个工具。只需要 Shell 时，在上面同一 `config` 下增加 `tools: [lite_exec]`。空数组表示全部关闭。使用自定义 PortableGit 时，还可以在此处设置 `bashPath`，填写 Bash 可执行文件的绝对路径。Flash PTC 会话可通过 `run_code` 调用已启用的工具，例如 `console.log(await tools.lite_stat({ path: "." }))`。
+省略 `tools` 时注册全部四个，空数组关闭全部。使用自定义 PortableGit 时，可在同一 `config` 下设置 `bashPath`，填写 Bash 可执行文件的绝对路径。
 
 ## 工具
 
@@ -45,12 +60,14 @@ Windows 的 `workspace-write` 和 `read-only` 默认在启动前选 PowerShell�
 
 全访问将完整输出写到 `$DSH_HOME/dsh-lite-exec/spill`，缺省为 `~/.dsh/dsh-lite-exec/spill`。工作区写入使用当前会话工作区根目录下的 `.dsh-lite-exec/spill`。`lite_grep` 跳过该目录，避免把之前的结果算入匹配。可用 `lite_read` 读取已有落盘文件。只读模式在发生溢出时返回已有预览和 `spill.reason: "READ_ONLY"`。确认目录不满足私有权限要求时返回 `ACL_DENIED`。其他存储或 I/O 故障返回 `UNAVAILABLE`。落盘问题保留预览和命令本身的结果。每个存储位置最多八个槽、每槽 16 MiB、总计 128 MiB。后续写入时清理超过 24 小时的过期文件。槽位已满时复用最早完成的结果，之后读取旧路径会返回文件不存在。正在写入的槽位保留。旧版日志继续按 24 小时过期。Windows 目录 ACL 限制在当前账号和允许的系统主体内，Unix 目录和文件分别用 0700、0600。Windows 工作区模式下，路径与防软链校验每次落盘都会执行，目录 DACL 校验则按目录标识缓存最多 30 秒（目录新建或被替换时会立即复检）。
 
+如果希望 `git status` 隐藏落盘目录，可在目标仓库的 `.git/info/exclude` 中添加一行 `/.dsh-lite-exec/`。
+
 ## 禁用、卸载与回滚
 
-- **禁用**：将覆盖项的 `enabled` 改为 `false`，重开 DSH Desktop。也可删掉此覆盖项，恢复组合包的默认值。
+- **禁用**：使用 Desktop 插件开关。已有 `config.enabled: false` 的配置仍然有效。修改 YAML 后重开 DSH Desktop，删除该覆盖值可恢复默认启用。
 - **卸载**：使用 Desktop 插件页面。也可在完全退出 Desktop 后删除本插件的覆盖项，运行 `dsh plugin --profile desktop remove dsh-lite-exec`，再打开 Desktop。
 - **回滚**：如安装过程中出现配置异常，退出 Desktop，核对安装前备份与当前文件，恢复该次安装造成的 `package.json`、`pnpm-lock.yaml` 和 `cordis.patch.yml` 变动。若期间没有其它修改，可恢复整份备份。落盘文件可以独立保留或清理。
 
 ## 验证
 
-在源码目录运行 `npm test`。Windows 可再运行 `npm test -- --powershell` 验证显式 PowerShell。运行 `node scripts/spill-check.mjs` 可检查私有目录权限、15 MiB 命令输出和 5,000 条搜索结果的实际落盘。安装包仅包含运行时、配置、中英文说明和许可证。
+在源码或解包目录运行 `npm test`。Windows 可运行 `npm test -- --powershell` 验证显式 PowerShell。运行 `node scripts/spill-check.mjs` 可检查私有目录权限、15 MiB 命令输出和 5,000 条搜索结果的实际落盘。

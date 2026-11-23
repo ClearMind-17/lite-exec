@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { once } from 'node:events'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
@@ -92,7 +92,7 @@ try {
     if (bundled) bundles.push('dsh-lite-exec')
     if (memoBundle) bundles.push(memoBundle)
     await writeFile(path.join(profile, 'package.json'), JSON.stringify({ name: 'dsh-profile-desktop', private: true, dsh: { profile: { bundles } } }))
-    await writeFile(path.join(profile, 'cordis.patch.yml'), stage === 'enabled' ? '- id: dsh-lite-exec\n  config:\n    enabled: true\n' : '[]\n')
+    await writeFile(path.join(profile, 'cordis.patch.yml'), stage === 'disabled' ? '- id: dsh-lite-exec\n  config:\n    enabled: false\n' : '[]\n')
     results[stage] = await runStage(stage)
     process.stderr.write(`DSH host check completed ${stage}\n`)
   }
@@ -131,6 +131,7 @@ async function runStage(stage) {
   let logs = '', shutdownAcknowledged = false
   for (const stream of [host.stdout, host.stderr]) stream.on('data', data => { logs = (logs + data).slice(-5000) })
   host.on('message', message => {
+    if (message.type === 'starting') host.send({ type: 'desktop-auth', secret: randomBytes(32).toString('base64url') })
     if (message.type === 'shutdown-complete') shutdownAcknowledged = true
   })
   const ready = new Promise((resolve, reject) => {
@@ -431,7 +432,7 @@ function compare({ baseline, disabled, enabled, removed }) {
     exec: { passed: enabled.native.durableCalls.length === 20 && failedCalls <= 1 && startupFailures === 0 && (!fullPowershell || longOutputSpills > 0),
       count: enabled.native.durableCalls.length, failures: failedCalls, longOutputSpills,
       startupFailures, msysStartupDenied: enabled.native.calls.filter(call => call.msysStartupDenied).length },
-    ptc: { passed: enabled.ptc.calls.length === 1 && failedPtc === 0, count: enabled.ptc.calls.length, failures: failedPtc },
+    ptc: { passed: enabled.ptc.ptcResultOk && enabled.ptc.calls.length === 1 && failedPtc === 0, count: enabled.ptc.calls.length, failures: failedPtc },
     timeout: { passed: timeout?.code === 'TIMEOUT' && timeout.durationMs < 5_000 && timeoutChildEmitted && (!fullPowershell || timeoutChildExited),
       deadlineMs: fullPowershell ? 3_000 : 1_000, durationMs: timeout?.durationMs, code: timeout?.code,
       childPidEmitted: timeoutChildEmitted, childExited: timeoutChildExited },
