@@ -1,0 +1,32 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "AF Worktree Setup",
+      "command": "node \"D:/AgentWork/agent-flow/agent-flow/bin/af-lite.mjs\" hook-worktree",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false
+    },
+    {
+      "name": "AF Radar",
+      "command": "node \"D:/AgentWork/agent-flow/agent-flow/bin/af-lite.mjs\" radar",
+      "icon": "lint"
+    },
+    {
+      "name": "AF Verify",
+      "command": "node \"D:/AgentWork/agent-flow/agent-flow/bin/af-lite.mjs\" verify",
+      "icon": "test"
+    },
+    {
+      "name": "AF Merge",
+      "command": "node \"D:/AgentWork/agent-flow/agent-flow/bin/af-lite.mjs\" merge",
+      "icon": "build"
+    },
+    {
+      "name": "AF Board",
+      "command": "node \"D:/AgentWork/agent-flow/agent-flow/bin/af-lite.mjs\" ui",
+      "icon": "play"
+    }
+  ]
+}
